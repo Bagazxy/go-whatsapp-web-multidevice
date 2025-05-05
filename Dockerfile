@@ -1,18 +1,38 @@
-# Use an official Docker image as a base
-FROM docker:latest
-
-# Install Docker Compose
-RUN apk add --no-cache py3-pip \
-    && pip install docker-compose
+# Use an official Go image as the base image
+FROM golang:1.20-alpine AS builder
 
 # Set the working directory inside the container
 WORKDIR /app
 
-# Copy the docker-compose.yml file into the container
-COPY docker-compose.yml .
+# Install necessary tools and dependencies
+RUN apk add --no-cache git ffmpeg
 
-# Expose port 3000 (or any other ports your services need)
+# Copy go.mod and go.sum to download dependencies
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy the rest of the application source code
+COPY . .
+
+# Build the application binary
+RUN go build -o whatsapp ./src/main.go
+
+# Use a minimal image for running the application
+FROM alpine:latest
+
+# Set the working directory inside the container
+WORKDIR /app
+
+# Install ffmpeg for media processing
+RUN apk add --no-cache ffmpeg
+
+# Copy the compiled binary and other necessary files
+COPY --from=builder /app/whatsapp /app/whatsapp
+COPY --from=builder /app/views /app/views
+COPY --from=builder /app/statics /app/statics
+
+# Expose the application's port
 EXPOSE 3000
 
-# Start Docker Compose
-CMD ["docker-compose", "up"]
+# Command to run the application
+CMD ["./whatsapp"]
